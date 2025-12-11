@@ -113,18 +113,21 @@ RMDIR := rm -rf
 
 # Directory where artifacts are installed.
 INSTALL_DIR := dist/nanvix
+INSTALL_LIB_DIR := $(INSTALL_DIR)/lib
+INSTALL_BIN_DIR := $(INSTALL_DIR)/bin
+INSTALL_ETC_DIR := $(INSTALL_DIR)/etc
 
 # Actual build artifacts.
 RUSTY_V8_LIB := $(TARGET_DIR)/gn_out/obj/librusty_v8.a
 BINDING_FILE := $(TARGET_DIR)/gn_out/src_binding.rs
-HELLO_NANVIX_BINARY := $(TARGET_DIR)/examples/hello_nanvix
+HELLO_NANVIX_BINARY := $(TARGET_DIR)/examples/hello_nanvix.elf
 
 #===================================================================================================
 # Build Targets
 #===================================================================================================
 
 # Declare phony targets.
-.PHONY: all all-rusty_v8 all-hello_nanvix install-rusty_v8 clean clean-rusty_v8 clean-hello_nanvix help
+.PHONY: all all-rusty_v8 all-hello_nanvix install install-rusty_v8 install-hello_nanvix clean clean-rusty_v8 clean-hello_nanvix help
 
 # Validate that cargo is available.
 ifeq ($(shell command -v cargo 2>/dev/null),)
@@ -138,7 +141,9 @@ help:
 	$(Q)echo "  all                 Build all V8 projects for Nanvix"
 	$(Q)echo "  all-rusty_v8        Build prebuilt static library"
 	$(Q)echo "  all-hello_nanvix    Build hello_nanvix example"
+	$(Q)echo "  install             Install all artifacts"
 	$(Q)echo "  install-rusty_v8    Install artifacts to dist directory"
+	$(Q)echo "  install-hello_nanvix Install hello_nanvix example"
 	$(Q)echo "  clean               Clean all build artifacts"
 	$(Q)echo "  clean-rusty_v8      Clean rusty_v8 build artifacts"
 	$(Q)echo "  clean-hello_nanvix  Clean hello_nanvix build artifacts"
@@ -170,17 +175,30 @@ all-rusty_v8:
 	$(Q)$(CARGO_BUILD_CMD)
 	$(Q)echo "✓ rusty_v8 library built successfully"
 
+# Installs all artifacts
+install: install-rusty_v8 install-hello_nanvix
+	$(Q)echo "✓ All artifacts installed under $(INSTALL_DIR)"
+
 # Installs rusty_v8 artifacts to dist directory
-install-rusty_v8: $(RUSTY_V8_LIB) $(BINDING_FILE) $(INSTALL_DIR)
+install-rusty_v8: all-rusty_v8 $(INSTALL_DIR)
 	$(Q)echo "=== Installing rusty_v8 artifacts ==="
-	$(Q)echo "Copying static library to $(INSTALL_DIR)..."
+	$(Q)$(MKDIR) "$(INSTALL_LIB_DIR)" "$(INSTALL_ETC_DIR)"
+	$(Q)echo "Copying static library to $(INSTALL_LIB_DIR)..."
 	$(Q)test -f "$(RUSTY_V8_LIB)" || (echo "Error: $(RUSTY_V8_LIB) not found" && exit 1)
-	$(Q)$(CP) "$(RUSTY_V8_LIB)" "$(INSTALL_DIR)/"
-	$(Q)echo "Copying binding file to $(INSTALL_DIR)..."
+	$(Q)$(CP) "$(RUSTY_V8_LIB)" "$(INSTALL_LIB_DIR)/"
+	$(Q)echo "Copying binding file to $(INSTALL_ETC_DIR)..."
 	$(Q)test -f "$(BINDING_FILE)" || (echo "Error: $(BINDING_FILE) not found" && exit 1)
-	$(Q)$(CP) "$(BINDING_FILE)" "$(INSTALL_DIR)/"
-	$(Q)echo "✓ Prebuilt static library created at $(INSTALL_DIR)/librusty_v8.a"
-	$(Q)echo "✓ Binding file created at $(INSTALL_DIR)/src_binding.rs"
+	$(Q)$(CP) "$(BINDING_FILE)" "$(INSTALL_ETC_DIR)/"
+	$(Q)echo "✓ Prebuilt static library created at $(INSTALL_LIB_DIR)/librusty_v8.a"
+	$(Q)echo "✓ Binding file created at $(INSTALL_ETC_DIR)/src_binding.rs"
+
+# Installs hello_nanvix example binary
+install-hello_nanvix: all-hello_nanvix $(INSTALL_DIR)
+	$(Q)echo "=== Installing hello_nanvix example ==="
+	$(Q)$(MKDIR) "$(INSTALL_BIN_DIR)"
+	$(Q)test -f "$(HELLO_NANVIX_BINARY)" || (echo "Error: $(HELLO_NANVIX_BINARY) not found" && exit 1)
+	$(Q)$(CP) "$(HELLO_NANVIX_BINARY)" "$(INSTALL_BIN_DIR)/"
+	$(Q)echo "✓ hello_nanvix installed at $(INSTALL_BIN_DIR)/hello_nanvix"
 
 # Cleans all build artifact.
 clean:

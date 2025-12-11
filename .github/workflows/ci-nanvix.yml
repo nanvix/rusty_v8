@@ -113,7 +113,7 @@ jobs:
           make all |& tee "$LOG_FILE"
           echo "Make build logs saved to $LOG_FILE"
 
-      - name: Install rusty_v8 artifacts
+      - name: Install Artifacts
         run: |
           set -euo pipefail
           : "${EXTRACTED_NANVIX_HOME:?Missing extracted artifact path}"
@@ -126,7 +126,7 @@ jobs:
           NANVIX_TOOLCHAIN="$LOCAL_TOOLCHAIN" \
           DOCKER=no \
           VERBOSE=yes \
-          make install-rusty_v8
+          make install
 
       - name: Upload build artifacts and logs
         if: always()
