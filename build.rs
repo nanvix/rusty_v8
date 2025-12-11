@@ -16,7 +16,38 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
+
+#[cfg(not(target_os = "nanvix"))]
 use which::which;
+
+#[cfg(target_os = "nanvix")]
+fn which(name: &str) -> Result<PathBuf, std::io::Error> {
+  env::var_os("PATH")
+    .and_then(|paths| {
+      env::split_paths(&paths).find_map(|dir| {
+        let path = dir.join(name);
+        if path.is_file() {
+          Some(path)
+        } else {
+          // On Windows, try with .exe extension
+          #[cfg(windows)]
+          {
+            let path_exe = dir.join(format!("{}.exe", name));
+            if path_exe.is_file() {
+              return Some(path_exe);
+            }
+          }
+          None
+        }
+      })
+    })
+    .ok_or_else(|| {
+      std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("executable '{}' not found", name),
+      )
+    })
+}
 
 fn main() {
   println!("cargo:rerun-if-changed=.gn");
@@ -36,6 +67,8 @@ fn main() {
     "GN",
     "GN_ARGS",
     "HOST",
+    "NANVIX_TOOLCHAIN",
+    "NANVIX_HOME",
     "NINJA",
     "OUT_DIR",
     "RUSTY_V8_ARCHIVE",
@@ -120,7 +153,10 @@ fn main() {
 
   print_prebuilt_src_binding_path();
 
-  download_static_lib_binaries();
+  // Check for local prebuilt Nanvix library first
+  if !try_use_local_prebuilt_lib() {
+    download_static_lib_binaries();
+  }
 }
 
 fn acquire_lock() -> LockFile {
@@ -153,8 +189,31 @@ fn build_binding() {
   let bindings = bindgen::Builder::default()
     .header("src/binding.hpp")
     .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
-    .clang_args(["-x", "c++", "-std=c++20", "-Iv8/include", "-I."])
-    .clang_args(args)
+    .clang_args(["-x", "c++", "-std=c++20", "-Iv8/include", "-I.", "-v"])
+    .clang_args(args);
+
+  // Add Nanvix-specific bindgen clang arguments
+  let bindings = if env::var("CARGO_CFG_TARGET_OS").unwrap() == "nanvix" {
+    let nanvix_toolchain = env::var("NANVIX_TOOLCHAIN")
+      .expect("NANVIX_TOOLCHAIN environment_variable must be set");
+
+    bindings.clang_args([
+      "--target=i686-unknown-nanvix",
+      &format!("--sysroot={}/i686-nanvix", nanvix_toolchain),
+      &format!("-I{}/include/c++/v1", nanvix_toolchain),
+      &format!("-I{}/include/i686-unknown-nanvix/c++/v1", nanvix_toolchain),
+      &format!("-I{}/lib/clang/21/include", nanvix_toolchain),
+      &format!("-I{}/i686-nanvix/include", nanvix_toolchain),
+      "-m32",
+      "-D__nanvix__",
+      "-D_GNU_SOURCE=1",
+      "-DV8_OS_NANVIX",
+    ])
+  } else {
+    bindings
+  };
+
+  let bindings = bindings
     .generate_cstr(true)
     .rustified_enum(".*UseCounterFeature")
     .rustified_enum(".*ModuleImportPhase")
@@ -165,6 +224,7 @@ fn build_binding() {
     .allowlist_item("RustObj")
     .allowlist_item("memory_span_t")
     .allowlist_item("ExternalConstOneByteStringResource")
+    .opaque_type(".*Visitor")
     .generate()
     .expect("Unable to generate bindings");
 
@@ -215,18 +275,22 @@ fn build_v8(is_asan: bool) {
     gn_args.push("host_cpu=\"arm64\"".to_string());
   }
 
+  let clang_base_path: Option<PathBuf>;
   if env::var_os("DISABLE_CLANG").is_some() {
+    clang_base_path = None;
     gn_args.push("is_clang=false".into());
     // -gline-tables-only is Clang-only
     gn_args.push("line_tables_only=false".into());
-  } else if let Some(clang_base_path) = find_compatible_system_clang() {
-    println!("clang_base_path (system): {}", clang_base_path.display());
-    gn_args.push(format!("clang_base_path={clang_base_path:?}"));
+  } else if let Some(path) = find_compatible_system_clang() {
+    println!("clang_base_path (system): {}", path.display());
+    gn_args.push(format!("clang_base_path={path:?}"));
     gn_args.push("treat_warnings_as_errors=false".to_string());
+    clang_base_path = Some(path);
   } else {
     println!("using Chromium's clang");
-    let clang_base_path = clang_download();
-    gn_args.push(format!("clang_base_path={clang_base_path:?}"));
+    let path = clang_download();
+    gn_args.push(format!("clang_base_path={path:?}"));
+    clang_base_path = Some(path);
 
     if target_os == "android" && target_arch == "aarch64" {
       gn_args.push("treat_warnings_as_errors=false".to_string());
@@ -316,6 +380,29 @@ fn build_v8(is_asan: bool) {
       "./third_party/catapult",
       &format!("{CHROMIUM_URI}/catapult.git"),
     );
+  }
+
+  // Handle Nanvix-specific setup
+  if target_os == "nanvix" {
+    create_nanvix_stubs();
+
+    // Add Nanvix-specific GN arguments
+    gn_args.push("target_os=\"nanvix\"".to_string());
+    gn_args.push("is_nanvix=true".to_string());
+    gn_args.push("target_cpu=\"x86\"".to_string());
+    gn_args.push("v8_target_cpu=\"x86\"".to_string());
+    gn_args.push("is_clang=true".to_string());
+    gn_args.push("use_custom_libcxx=false".to_string());
+    gn_args.push("v8_enable_pointer_compression=false".to_string());
+    gn_args.push("v8_enable_webassembly=false".to_string());
+    gn_args.push("v8_enable_i18n_support=true".to_string());
+    gn_args.push("icu_use_data_file=false".to_string());
+    gn_args.push("v8_use_external_startup_data=false".to_string());
+    gn_args.push("treat_warnings_as_errors=false".to_string());
+    gn_args.push("is_debug=false".to_string());
+    gn_args.push("extra_cflags=\"-m32 -march=i686\"".to_string());
+    gn_args.push("extra_cxxflags=\"-m32 -march=i686\"".to_string());
+    gn_args.push("extra_ldflags=\"-m32\"".to_string());
   }
 
   if target_triple.starts_with("i686-") {
@@ -565,6 +652,51 @@ fn download_file(url: &str, filename: &Path) {
   assert!(!tmpfile.exists());
 }
 
+fn try_use_local_prebuilt_lib() -> bool {
+  let target = env::var("TARGET").unwrap();
+
+  // Only check for local prebuilt for Nanvix target
+  if target != "i686-unknown-nanvix" {
+    return false;
+  }
+
+  // Check for local prebuilt library in dist/nanvix
+  let root = env::current_dir().unwrap();
+  let local_lib_dir = root.join("dist").join("nanvix");
+  let local_lib_path = local_lib_dir.join(static_lib_name(""));
+  let local_binding_path = local_lib_dir.join("src_binding.rs");
+
+  if local_lib_path.exists() && local_binding_path.exists() {
+    // Copy binding to gen directory with the expected name
+    let profile = prebuilt_profile();
+    let features = prebuilt_features_suffix();
+    let gen_binding_name =
+      format!("src_binding{features}_{profile}_{target}.rs");
+    let gen_binding_path = root.join("gen").join(gen_binding_name);
+
+    // Create gen directory if it doesn't exist
+    if let Some(parent) = gen_binding_path.parent() {
+      std::fs::create_dir_all(parent).unwrap();
+    }
+
+    // Copy the binding file
+    std::fs::copy(&local_binding_path, &gen_binding_path).unwrap();
+
+    println!("cargo:rustc-link-search={}", local_lib_dir.display());
+    println!(
+      "Using local prebuilt Nanvix library: {}",
+      local_lib_path.display()
+    );
+    println!(
+      "Using local prebuilt Nanvix binding: {}",
+      gen_binding_path.display()
+    );
+    return true;
+  }
+
+  false
+}
+
 fn download_static_lib_binaries() {
   let url = static_lib_url();
   println!("static lib URL: {url}");
@@ -684,6 +816,40 @@ fn print_link_flags() {
   }
   let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
   let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
+
+  // Add Nanvix-specific link arguments
+  if target_os == "nanvix" {
+    // set GN_VERBOSE=1 and PRINT_GN_ARGS=yes
+    unsafe {
+      env::set_var("GN_VERBOSE", "1");
+      env::set_var("PRINT_GN_ARGS", "yes");
+    }
+
+    let nanvix_home = env::var("NANVIX_HOME")
+      .expect("NANVIX_HOME environment variable must be set");
+    let nanvix_toolchain = env::var("NANVIX_TOOLCHAIN")
+      .expect("NANVIX_TOOLCHAIN environment variable must be set");
+
+    // Add all the link arguments that were in RUSTFLAGS
+    println!("cargo:rustc-link-arg=-T{}/lib/user.ld", nanvix_home);
+    println!(
+      "cargo:rustc-link-arg=-L{}/lib/i686-unknown-nanvix/",
+      nanvix_toolchain
+    );
+    println!("cargo:rustc-link-arg=-lc++");
+    println!("cargo:rustc-link-arg=-lc++abi");
+    println!(
+      "cargo:rustc-link-arg=-L{}/i686-nanvix/lib/",
+      nanvix_toolchain
+    );
+    println!("cargo:rustc-link-arg=-lc");
+    println!("cargo:rustc-link-arg=-lm");
+    println!(
+      "cargo:rustc-link-arg=-L{}/lib/clang/21/lib/i386-unknown-nanvix/",
+      nanvix_toolchain
+    );
+    println!("cargo:rustc-link-arg=-lclang_rt.builtins");
+  }
 
   if target_os == "windows" {
     println!("cargo:rustc-link-lib=dylib=winmm");
@@ -917,6 +1083,7 @@ type NinjaEnv = Vec<(String, String)>;
 fn ninja(gn_out_dir: &Path, maybe_env: Option<NinjaEnv>) -> Command {
   let cmd_string = env::var("NINJA").unwrap_or_else(|_| "ninja".to_owned());
   let mut cmd = Command::new(&cmd_string);
+  cmd.arg("-v");
   cmd.arg("-C");
   cmd.arg(gn_out_dir);
   if !cmd_string.ends_with("autoninja") {
@@ -1058,6 +1225,56 @@ pub fn parse_ninja_graph(s: &str) -> HashSet<String> {
     }
   }
   out
+}
+
+fn create_nanvix_stubs() {
+  let stub_code = r#"
+// Stub implementations for missing C++ runtime symbols
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// DSO handle stub - this is usually needed
+char __dso_handle;
+
+// Thread exit handler stub - minimal implementation
+int __cxa_thread_atexit_impl(void (*func)(void *), void *arg, void *dso_handle) {
+    return 0; // Success, but we don't actually register anything
+}
+
+#ifdef __cplusplus
+}
+#endif
+"#;
+
+  std::fs::write("/tmp/nanvix_stubs.c", stub_code).unwrap();
+
+  let nanvix_toolchain = std::env::var("NANVIX_TOOLCHAIN")
+    .expect("NANVIX_TOOLCHAIN environment variable must be set");
+
+  let clang_path = format!("{}/bin/clang", nanvix_toolchain);
+
+  let output = std::process::Command::new(&clang_path)
+    .args(&[
+      "-c",
+      "-target",
+      "i686-elf",
+      "-o",
+      "/tmp/nanvix_stubs.o",
+      "/tmp/nanvix_stubs.c",
+    ])
+    .output()
+    .expect("Failed to compile nanvix stubs");
+
+  if !output.status.success() {
+    panic!(
+      "Failed to compile nanvix stubs: {}",
+      String::from_utf8_lossy(&output.stderr)
+    );
+  }
+
+  println!("cargo:rustc-link-arg=/tmp/nanvix_stubs.o");
 }
 
 fn env_bool(key: &str) -> bool {

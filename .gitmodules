@@ -1,9 +1,9 @@
 [submodule "v8"]
 	path = v8
-	url = https://github.com/denoland/v8.git
+	url = https://github.com/nanvix/v8
 [submodule "build"]
 	path = build
-	url = https://github.com/denoland/chromium_build.git
+	url = https://github.com/nanvix/chromium_build
 [submodule "tools/clang"]
 	path = tools/clang
 	url = https://chromium.googlesource.com/chromium/src/tools/clang.git
@@ -21,7 +21,7 @@
 	url = https://chromium.googlesource.com/chromium/deps/icu.git
 [submodule "third_party/abseil-cpp"]
 	path = third_party/abseil-cpp
-	url = https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp.git
+	url = https://github.com/nanvix/abseil-cpp
 [submodule "third_party/fp16/src"]
 	path = third_party/fp16/src
 	url = https://github.com/Maratyszcza/FP16.git

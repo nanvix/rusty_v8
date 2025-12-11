@@ -48,10 +48,19 @@ static_assert(sizeof(v8::PromiseRejectMessage) == sizeof(size_t) * 3,
 
 static_assert(sizeof(v8::Locker) == sizeof(size_t) * 2, "Locker size mismatch");
 
+#ifdef __i386__
+static_assert(sizeof(v8::ScriptCompiler::CompilationDetails) == 20,
+              "CompilationDetails size mismatch");
+#else
 static_assert(sizeof(v8::ScriptCompiler::CompilationDetails) ==
                   sizeof(int64_t) * 3,
               "CompilationDetails size mismatch");
+#endif
 
+#ifdef __i386__
+static_assert(sizeof(v8::ScriptCompiler::Source) == 64,
+              "Source size mismatch");
+#else
 static_assert(
     sizeof(v8::ScriptCompiler::Source) ==
         align_to<size_t>(sizeof(size_t) * 8 + sizeof(int) * 2 +
@@ -60,6 +69,7 @@ static_assert(
                          align_to<int64_t>(sizeof(size_t)) +
                          sizeof(v8::ScriptCompiler::CompilationDetails)),
     "Source size mismatch");
+#endif
 
 static_assert(sizeof(v8::FunctionCallbackInfo<v8::Value>) == sizeof(size_t) * 3,
               "FunctionCallbackInfo size mismatch");
@@ -3959,7 +3969,11 @@ void cppgc__heap__collect_garbage_for_testing(
   heap->CollectGarbageForTesting(stack_state);
 }
 
-class alignas(16) RustObjButAlign16 : public RustObj {};
+#ifdef __i386__
+struct alignas(8) RustObjButAlign16: public RustObj {};
+#else
+struct alignas(16) RustObjButAlign16: public RustObj {};
+#endif
 
 RustObj* cppgc__make_garbage_collectable(v8::CppHeap* heap, size_t size,
                                          size_t alignment) {
