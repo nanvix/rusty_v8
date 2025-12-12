@@ -6,10 +6,10 @@ on:
     - cron: "0 5 * * *"
   push:
     branches:
-      - "nanvix/*"
+      - 'nanvix/**'
   pull_request:
     branches:
-      - "nanvix/*"
+      - 'nanvix/**'
 
 permissions:
   contents: read
