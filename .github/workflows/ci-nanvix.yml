@@ -21,7 +21,7 @@ jobs:
     outputs:
       matrix: ${{ steps.generate-matrix.outputs.matrix }}
     steps:
-      - name: Discover Nanvix .tar.bz2 assets
+      - name: Discover Artifacts
         id: generate-matrix
         env:
           API_URL: https://api.github.com/repos/nanvix/nanvix/releases/tags/latest
@@ -55,12 +55,12 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Cache Rust target directory
+      - name: Restore Cached Artifacts
         uses: actions/cache@v4
         with:
           path: target
@@ -68,7 +68,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nanvix-${{ matrix.artifact_name }}-
 
-      - name: Download Nanvix artifact ${{ matrix.artifact_name }}
+      - name: Download Nanvix Artifact (${{ matrix.artifact_name }})
         env:
           ARTIFACT_DIR: ${{ github.workspace }}/nanvix-artifacts
           ARTIFACT_URL: ${{ matrix.artifact_url }}
@@ -85,7 +85,7 @@ jobs:
             exit 1
           fi
 
-      - name: Extract Nanvix artifact ${{ matrix.artifact_name }}
+      - name: Extract Nanvix Artifact (${{ matrix.artifact_name }})
         env:
           ARTIFACT_DIR: ${{ github.workspace }}/nanvix-artifacts
           ARTIFACT_NAME: ${{ matrix.artifact_name }}
