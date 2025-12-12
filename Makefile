@@ -121,13 +121,14 @@ INSTALL_ETC_DIR := $(INSTALL_DIR)/etc
 RUSTY_V8_LIB := $(TARGET_DIR)/gn_out/obj/librusty_v8.a
 BINDING_FILE := $(TARGET_DIR)/gn_out/src_binding.rs
 HELLO_NANVIX_BINARY := $(TARGET_DIR)/examples/hello_nanvix.elf
+HELLO_NANVIX_BINARY_ABS := $(abspath $(HELLO_NANVIX_BINARY))
 
 #===================================================================================================
 # Build Targets
 #===================================================================================================
 
 # Declare phony targets.
-.PHONY: all all-rusty_v8 all-hello_nanvix install install-rusty_v8 install-hello_nanvix clean clean-rusty_v8 clean-hello_nanvix help
+.PHONY: all all-rusty_v8 all-hello_nanvix install install-rusty_v8 install-hello_nanvix run clean clean-rusty_v8 clean-hello_nanvix help
 
 # Validate that cargo is available.
 ifeq ($(shell command -v cargo 2>/dev/null),)
@@ -144,6 +145,7 @@ help:
 	$(Q)echo "  install             Install all artifacts"
 	$(Q)echo "  install-rusty_v8    Install artifacts to dist directory"
 	$(Q)echo "  install-hello_nanvix Install hello_nanvix example"
+	$(Q)echo "  run                 Run hello_nanvix example using run-nanvixd.sh"
 	$(Q)echo "  clean               Clean all build artifacts"
 	$(Q)echo "  clean-rusty_v8      Clean rusty_v8 build artifacts"
 	$(Q)echo "  clean-hello_nanvix  Clean hello_nanvix build artifacts"
@@ -199,6 +201,13 @@ install-hello_nanvix: all-hello_nanvix $(INSTALL_DIR)
 	$(Q)test -f "$(HELLO_NANVIX_BINARY)" || (echo "Error: $(HELLO_NANVIX_BINARY) not found" && exit 1)
 	$(Q)$(CP) "$(HELLO_NANVIX_BINARY)" "$(INSTALL_BIN_DIR)/"
 	$(Q)echo "✓ hello_nanvix installed at $(INSTALL_BIN_DIR)/hello_nanvix"
+
+# Runs hello_nanvix example using run-nanvixd.sh script
+run: all-hello_nanvix
+	$(Q)echo "=== Running hello_nanvix example ==="
+	$(Q)test -f "$(NANVIX_HOME)/etc/scripts/run-nanvixd.sh" || (echo "Error: run-nanvixd.sh not found at $(NANVIX_HOME)/etc/scripts/" && exit 1)
+	$(Q)test -f "$(HELLO_NANVIX_BINARY)" || (echo "Error: $(HELLO_NANVIX_BINARY) not found" && exit 1)
+	$(Q)cd "$(NANVIX_HOME)" && etc/scripts/run-nanvixd.sh "$(HELLO_NANVIX_BINARY_ABS)"
 
 # Cleans all build artifact.
 clean:
