@@ -24,7 +24,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Discover patched crates
+      - name: Discover Patched Crates
         id: patched-crates
         run: |
           set -euo pipefail
@@ -77,7 +77,7 @@ jobs:
               fh.write(f"body_path={body_path}\n")
           PY
 
-      - name: Update patched crates
+      - name: Update Patched Crates
         env:
           PATCHED_SPECS: ${{ steps.patched-crates.outputs.specs }}
         run: |
@@ -87,7 +87,7 @@ jobs:
             cargo update -p "$spec"
           done
 
-      - name: Open pull request
+      - name: Open Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -95,6 +95,8 @@ jobs:
           commit-message: "deps: refresh patched crates"
           title: "deps: refresh patched Nanvix crates"
           body-path: ${{ steps.patched-crates.outputs.body_path }}
-          labels: "dependencies,nanvix-patches"
+          labels: "enhancement"
+          reviewers: ppenna
+          assignees: ppenna
           branch: "automation/update-nanvix-dependencies"
           delete-branch: false
