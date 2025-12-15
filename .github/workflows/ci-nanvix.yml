@@ -11,7 +11,7 @@ on:
     branches:
       - 'nanvix/**'
   repository_dispatch:
-    types: [nanvix-release]
+    types: [nanvix-minor-release]
 
 permissions:
   contents: read
