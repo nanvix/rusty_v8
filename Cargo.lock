@@ -413,7 +413,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading 0.8.8",
+ "libloading 0.7.4",
 ]
 
 [[package]]
@@ -700,7 +700,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 [[package]]
 name = "libc"
 version = "0.2.174"
-source = "git+https://github.com/nanvix/libc?branch=nanvix%2Fv0.2.174#14f109f3d1c93052b59f133f34c3a744ddb81478"
+source = "git+https://github.com/nanvix/libc?branch=nanvix%2Fv0.2.174#9d9b94f75f888a0397b45022d992821c71abc9a9"
 
 [[package]]
 name = "libloading"
@@ -1777,7 +1777,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
