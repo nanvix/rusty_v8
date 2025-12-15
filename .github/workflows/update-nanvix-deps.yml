@@ -15,15 +15,35 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    env:
-      PATCHED_DEPS: "libc libloading errno fslock clang-sys"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Discover patched crates
+        id: patched-crates
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import pathlib
+          import tomllib
+
+          config_path = pathlib.Path('.cargo/config.toml')
+          data = tomllib.loads(config_path.read_text())
+          patches = data.get('patch', {}).get('crates-io', {})
+          if not patches:
+              raise SystemExit('No patched crates found in .cargo/config.toml')
+
+          deps = ' '.join(sorted(patches))
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'deps={deps}\n')
+          PY
+
       - name: Update patched crates
+        env:
+          PATCHED_DEPS: ${{ steps.patched-crates.outputs.deps }}
         run: |
           set -euo pipefail
           python update-nanvix-deps.py --deps "$PATCHED_DEPS"
