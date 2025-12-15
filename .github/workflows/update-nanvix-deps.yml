@@ -22,10 +22,7 @@ jobs:
       - name: Update patched crates
         run: |
           set -euo pipefail
-          for dep in $PATCHED_DEPS; do
-            echo "Updating ${dep}..."
-            cargo update -p "${dep}"
-          done
+          python update-nanvix-deps.py --deps "$PATCHED_DEPS"
 
       - name: Open pull request
         uses: peter-evans/create-pull-request@v6
