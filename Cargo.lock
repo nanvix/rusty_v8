@@ -700,7 +700,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 [[package]]
 name = "libc"
 version = "0.2.174"
-source = "git+https://github.com/nanvix/libc?branch=nanvix%2Fv0.2.174#9d9b94f75f888a0397b45022d992821c71abc9a9"
+source = "git+https://github.com/nanvix/libc?branch=nanvix%2Fv0.2.174#3ddddf11edbd63ddbf49d1666611584c9f022aee"
 
 [[package]]
 name = "libloading"
