@@ -4,6 +4,10 @@ on:
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches:
+      - nanvix/**
 
 jobs:
   refresh:
