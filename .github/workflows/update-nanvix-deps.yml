@@ -21,32 +21,46 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Discover patched crates
-        id: patched-crates
+      - name: Refresh patched crates
         run: |
           set -euo pipefail
           python - <<'PY'
-          import os
           import pathlib
+          import subprocess
+          import sys
+
           import tomllib
 
           config_path = pathlib.Path('.cargo/config.toml')
-          data = tomllib.loads(config_path.read_text())
+          data = tomllib.loads(config_path.read_text(encoding='utf-8'))
           patches = data.get('patch', {}).get('crates-io', {})
           if not patches:
               raise SystemExit('No patched crates found in .cargo/config.toml')
 
-          deps = ' '.join(sorted(patches))
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-              fh.write(f'deps={deps}\n')
-          PY
+          specs = []
+          for name in sorted(patches):
+              entry = patches.get(name) or {}
+              branch = str(entry.get('branch', ''))
+              version_token = branch.rsplit('/', 1)[-1] if branch else ''
+              if version_token.startswith('v'):
+                  version_token = version_token[1:]
 
-      - name: Update patched crates
-        env:
-          PATCHED_DEPS: ${{ steps.patched-crates.outputs.deps }}
-        run: |
-          set -euo pipefail
-          python update-nanvix-deps.py --deps "$PATCHED_DEPS"
+              if not version_token:
+                  print(
+                      f"Warning: Could not derive version for {name} from branch '{branch}'",
+                      file=sys.stderr,
+                  )
+                  continue
+
+              specs.append(f"{name}@{version_token}")
+
+          if not specs:
+              raise SystemExit('No dependency specs could be derived from patches')
+
+          for spec in specs:
+              print(f"Updating {spec}…", flush=True)
+              subprocess.run(['cargo', 'update', '-p', spec], check=True)
+          PY
 
       - name: Open pull request
         uses: peter-evans/create-pull-request@v6
