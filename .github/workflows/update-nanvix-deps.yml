@@ -91,7 +91,7 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          base: ${{ github.ref_name }}
+          base: ${{ (github.event_name == 'pull_request' && github.event.pull_request.base.ref) || github.ref_name }}
           commit-message: "Update Nanvix Dependencies"
           title: "Update Nanvix Dependencies"
           body-path: ${{ steps.patched-crates.outputs.body_path }}
