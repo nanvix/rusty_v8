@@ -1,15 +1,19 @@
 name: Nanvix CI
 
 on:
-  workflow_dispatch:
+  # Nightly run ensures long-lived branches do not drift from defaults.
   schedule:
     - cron: "0 0 * * *"
+  # Automatically re-sync whenever nanvix/* branches receive direct pushes.
   push:
     branches:
-      - 'nanvix/**'
+      - nanvix/**
+  # Automatically run CI on PRs targeting nanvix/* branches.
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
     branches:
-      - 'nanvix/**'
+      - nanvix/**
+  workflow_dispatch:
   repository_dispatch:
     types: [nanvix-minor-release, nanvix-major-release]
 
