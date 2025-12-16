@@ -206,7 +206,7 @@ checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
 [[package]]
 name = "clang-sys"
 version = "1.8.1"
-source = "git+https://github.com/nanvix/clang-sys?branch=nanvix%2Fv1.8.1#ee92b8a58fa3031b4fd34bf2e15906f016984263"
+source = "git+https://github.com/nanvix/clang-sys?branch=nanvix%2Fv1.8.1#41e79fd300f3c2acabdfceccef79115d7266081e"
 dependencies = [
  "glob",
  "libc",
