@@ -13,7 +13,9 @@ on:
     types: [opened, reopened, synchronize, ready_for_review]
     branches:
       - nanvix/**
+  # Manual trigger allows running the CI on-demand.
   workflow_dispatch:
+  # Automatically trigger on minor/major releases.
   repository_dispatch:
     types: [nanvix-minor-release, nanvix-major-release]
 
