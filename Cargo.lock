@@ -488,7 +488,7 @@ dependencies = [
 [[package]]
 name = "fslock"
 version = "0.2.1"
-source = "git+https://github.com/nanvix/fslock?branch=nanvix%2Fv0.2.1#d4d96e8071e3b7d8c1cdef2f2cc1dfd7b9898325"
+source = "git+https://github.com/nanvix/fslock?branch=nanvix%2Fv0.2.1#96a74c3810ecf8859564eea39296bfee3d7a3f85"
 dependencies = [
  "libc",
  "winapi",
@@ -715,7 +715,7 @@ dependencies = [
 [[package]]
 name = "libloading"
 version = "0.8.8"
-source = "git+https://github.com/nanvix/rust_libloading?branch=nanvix%2Fv0.8.8#db9e515c64fa5fdab198e1c49d157df7f8f8a796"
+source = "git+https://github.com/nanvix/rust_libloading?branch=nanvix%2Fv0.8.8#1c6bed36a5f922bddd5769c9408f48621e9b117c"
 dependencies = [
  "cfg-if 1.0.1",
  "windows-targets 0.52.6",
