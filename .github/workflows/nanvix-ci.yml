@@ -73,7 +73,11 @@ jobs:
         run: |
           echo "=== Disk space before cleanup ==="
           df -h /
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/hostedtoolcache
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/hostedtoolcache \
+            /usr/local/graalvm /usr/local/.ghcup /usr/share/swift \
+            /usr/local/share/boost /usr/lib/jvm /opt/ghc \
+            /opt/microsoft/powershell /usr/local/share/chromium
+          docker system prune -af || true
           echo "=== Disk space after cleanup ==="
           df -h /
 
