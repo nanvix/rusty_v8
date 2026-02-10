@@ -66,7 +66,7 @@ jobs:
       options: --device /dev/kvm
     defaults:
       run:
-        shell: bash
+        shell: bash -leo pipefail {0}
     env:
       NANVIX_SHA: ${{ needs.get-nanvix-info.outputs.sha }}
       NANVIX_SHA_FULL: ${{ needs.get-nanvix-info.outputs.sha_full }}
@@ -95,12 +95,10 @@ jobs:
 
       - name: Build
         run: |
-          source "$HOME/.cargo/env" 2>/dev/null || true
           make NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="/opt/nanvix" DOCKER=no VERBOSE=yes all
 
       - name: Run Example
         run: |
-          source "$HOME/.cargo/env" 2>/dev/null || true
           make NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="/opt/nanvix" DOCKER=no VERBOSE=yes run
 
       - name: Cleanup Dangling Resources
@@ -111,7 +109,6 @@ jobs:
       - name: Package Artifacts
         run: |
           set -euo pipefail
-          source "$HOME/.cargo/env" 2>/dev/null || true
           make NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="/opt/nanvix" DOCKER=no VERBOSE=yes install
           ARTIFACT_NAME="rusty_v8-${{ matrix.platform }}-${{ matrix.process-mode }}"
           mv dist/nanvix "dist/${ARTIFACT_NAME}"
