@@ -123,6 +123,9 @@ BINDING_FILE := $(TARGET_DIR)/gn_out/src_binding.rs
 HELLO_NANVIX_BINARY := $(TARGET_DIR)/examples/hello_nanvix.elf
 HELLO_NANVIX_BINARY_ABS := $(abspath $(HELLO_NANVIX_BINARY))
 
+# nanvixd configuration.
+NANVIXD_BINARY := $(NANVIX_HOME)/bin/nanvixd.elf
+
 #===================================================================================================
 # Build Targets
 #===================================================================================================
@@ -138,17 +141,17 @@ endif
 # Prints help.
 help:
 	$(Q)echo "Available Make Targets"
-	$(Q)echo "  help                Show this help message (default)"
-	$(Q)echo "  all                 Build all V8 projects for Nanvix"
-	$(Q)echo "  all-rusty_v8        Build prebuilt static library"
-	$(Q)echo "  all-hello_nanvix    Build hello_nanvix example"
-	$(Q)echo "  install             Install all artifacts"
-	$(Q)echo "  install-rusty_v8    Install artifacts to dist directory"
+	$(Q)echo "  help                 Show this help message (default)"
+	$(Q)echo "  all                  Build all V8 projects for Nanvix"
+	$(Q)echo "  all-rusty_v8         Build prebuilt static library"
+	$(Q)echo "  all-hello_nanvix     Build hello_nanvix example"
+	$(Q)echo "  install              Install all artifacts"
+	$(Q)echo "  install-rusty_v8     Install artifacts to dist directory"
 	$(Q)echo "  install-hello_nanvix Install hello_nanvix example"
-	$(Q)echo "  run                 Run hello_nanvix example using run-nanvixd.sh"
-	$(Q)echo "  clean               Clean all build artifacts"
-	$(Q)echo "  clean-rusty_v8      Clean rusty_v8 build artifacts"
-	$(Q)echo "  clean-hello_nanvix  Clean hello_nanvix build artifacts"
+	$(Q)echo "  run                  Run hello_nanvix example using nanvixd.elf"
+	$(Q)echo "  clean                Clean all build artifacts"
+	$(Q)echo "  clean-rusty_v8       Clean rusty_v8 build artifacts"
+	$(Q)echo "  clean-hello_nanvix   Clean hello_nanvix build artifacts"
 	$(Q)echo ""
 	$(Q)echo "Configuration Variables"
 	$(Q)echo "  RELEASE=[yes|no]               Build mode (default: $(RELEASE))"
@@ -202,12 +205,13 @@ install-hello_nanvix: all-hello_nanvix $(INSTALL_DIR)
 	$(Q)$(CP) "$(HELLO_NANVIX_BINARY)" "$(INSTALL_BIN_DIR)/"
 	$(Q)echo "✓ hello_nanvix installed at $(INSTALL_BIN_DIR)/hello_nanvix"
 
-# Runs hello_nanvix example using run-nanvixd.sh script
+# Runs hello_nanvix example using nanvixd.elf in interactive terminal mode.
 run: all-hello_nanvix
 	$(Q)echo "=== Running hello_nanvix example ==="
-	$(Q)test -f "$(NANVIX_HOME)/etc/scripts/run-nanvixd.sh" || (echo "Error: run-nanvixd.sh not found at $(NANVIX_HOME)/etc/scripts/" && exit 1)
+	$(Q)test -f "$(NANVIXD_BINARY)" || (echo "Error: $(NANVIXD_BINARY) not found" && exit 1)
 	$(Q)test -f "$(HELLO_NANVIX_BINARY)" || (echo "Error: $(HELLO_NANVIX_BINARY) not found" && exit 1)
-	$(Q)cd "$(NANVIX_HOME)" && etc/scripts/run-nanvixd.sh "$(HELLO_NANVIX_BINARY_ABS)"
+	$(Q)"$(NANVIXD_BINARY)" -bin-dir "$(NANVIX_HOME)/bin" -- "$(HELLO_NANVIX_BINARY_ABS)"
+	$(Q)echo "✓ hello_nanvix example completed successfully!"
 
 # Cleans all build artifact.
 clean:
