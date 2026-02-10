@@ -25,41 +25,56 @@ permissions:
   issues: write
 
 jobs:
-  discover-artifacts:
+  setup:
     runs-on: self-hosted
     outputs:
       matrix: ${{ steps.generate-matrix.outputs.matrix }}
+    defaults:
+      run:
+        shell: bash
     steps:
-      - name: Discover Artifacts
-        id: generate-matrix
+      - name: Download Nanvix Artifacts
         env:
-          API_URL: https://api.github.com/repos/nanvix/nanvix/releases/tags/latest
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT_DIR: ${{ github.workspace }}/nanvix-artifacts
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          response=$(curl -fsSL -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GH_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" "$API_URL")
-          tarballs=$(echo "$response" | jq '[.assets[] | select(.browser_download_url | endswith(".tar.bz2")) | {artifact_name: .name, artifact_url: .browser_download_url}]')
-          all_count=$(echo "$tarballs" | jq 'length')
-          if [[ "$all_count" -eq 0 ]]; then
-            echo "::error::No .tar.bz2 assets were found in the latest Nanvix release."
+          curl -fsSL https://raw.githubusercontent.com/nanvix/nanvix/ccee7b3688925496cb666385a534b14a0268a07b/scripts/get-nanvix.sh | bash -s -- --force "$ARTIFACT_DIR"
+
+      - name: Generate Build Matrix
+        id: generate-matrix
+        env:
+          ARTIFACT_DIR: ${{ github.workspace }}/nanvix-artifacts
+        run: |
+          set -euo pipefail
+          tarballs=$(find "$ARTIFACT_DIR" -maxdepth 1 -name '*.tar.bz2' -printf '%f\n')
+          if [[ -z "$tarballs" ]]; then
+            echo "::error::No .tar.bz2 artifacts found in $ARTIFACT_DIR"
             exit 1
           fi
-          filtered=$(echo "$tarballs" | jq '[.[] | select((.artifact_name | ascii_downcase | contains("microvm")) or (.artifact_name | ascii_downcase | contains("hyperlight"))) ]')
-          filtered_count=$(echo "$filtered" | jq 'length')
-          if [[ "$filtered_count" -eq 0 ]]; then
-            echo "::warning::No eligible artifacts (microvm or hyperlight) found among $all_count .tar.bz2 assets."
-            filtered=$(jq -n '[]')
+          filtered=$(echo "$tarballs" | grep -iE 'microvm|hyperlight' || true)
+          if [[ -z "$filtered" ]]; then
+            echo "::warning::No eligible artifacts (microvm or hyperlight) found."
+            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          matrix=$(echo "$filtered" | jq -c '{include: .}')
+          matrix=$(echo "$filtered" | jq -Rc '{artifact_name: .}' | jq -sc '{include: .}')
           echo "Matrix definition: $matrix"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
+      - name: Upload Nanvix Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanvix-artifacts
+          path: ${{ github.workspace }}/nanvix-artifacts
+          retention-days: 1
+
   build:
-    needs: discover-artifacts
+    needs: setup
     runs-on: self-hosted
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.discover-artifacts.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
     defaults:
       run:
         shell: bash
@@ -77,22 +92,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nanvix-${{ matrix.artifact_name }}-
 
-      - name: Download Nanvix Artifact (${{ matrix.artifact_name }})
-        env:
-          ARTIFACT_DIR: ${{ github.workspace }}/nanvix-artifacts
-          ARTIFACT_URL: ${{ matrix.artifact_url }}
-          ARTIFACT_NAME: ${{ matrix.artifact_name }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$ARTIFACT_DIR"
-          DEST="$ARTIFACT_DIR/$ARTIFACT_NAME"
-          echo "Downloading $ARTIFACT_URL"
-          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/octet-stream" "$ARTIFACT_URL" -o "$DEST"
-          if [[ ! -s "$DEST" ]]; then
-            echo "::error::Failed to download $ARTIFACT_URL"
-            exit 1
-          fi
+      - name: Download Nanvix Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nanvix-artifacts
+          path: ${{ github.workspace }}/nanvix-artifacts
 
       - name: Extract Nanvix Artifact (${{ matrix.artifact_name }})
         env:
@@ -101,6 +105,10 @@ jobs:
         run: |
           set -euo pipefail
           SRC="$ARTIFACT_DIR/$ARTIFACT_NAME"
+          if [[ ! -s "$SRC" ]]; then
+            echo "::error::Expected artifact not found: $SRC"
+            exit 1
+          fi
           EXTRACT_DIR="$ARTIFACT_DIR/extracted/${ARTIFACT_NAME//.tar.bz2/}"
           rm -rf "$EXTRACT_DIR"
           mkdir -p "$EXTRACT_DIR"
@@ -176,18 +184,18 @@ jobs:
 
   report-minor-release-failure:
     needs:
-      - discover-artifacts
+      - setup
       - build
     if: >-
       ${{ always() && github.event_name == 'repository_dispatch' &&
           (github.event.action == 'nanvix-minor-release' || github.event.action == 'nanvix-major-release') &&
-          (needs['discover-artifacts'].result == 'failure' || needs.build.result == 'failure') }}
+          (needs.setup.result == 'failure' || needs.build.result == 'failure') }}
     runs-on: ubuntu-latest
     steps:
       - name: Create failure issue
         uses: actions/github-script@v7
         env:
-          DISCOVER_RESULT: ${{ needs['discover-artifacts'].result }}
+          SETUP_RESULT: ${{ needs.setup.result }}
           BUILD_RESULT: ${{ needs.build.result }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -202,7 +210,7 @@ jobs:
               `The Nanvix ${releaseType} release CI workflow failed.`,
               `- Run: [#${context.runNumber}](${runUrl})`,
               `- SHA: ${context.sha}`,
-              `- discover-artifacts: ${process.env.DISCOVER_RESULT}`,
+              `- setup: ${process.env.SETUP_RESULT}`,
               `- build: ${process.env.BUILD_RESULT}`,
               '',
               'Please investigate and take any corrective actions.'
