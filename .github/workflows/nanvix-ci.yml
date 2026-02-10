@@ -61,30 +61,24 @@ jobs:
           - platform: microvm
             process-mode: multi-process
     name: ${{ matrix.platform }}-${{ matrix.process-mode }}
-    container:
-      image: nanvix/toolchain:v0.11.x-minimal
-      options: --device /dev/kvm
-    defaults:
-      run:
-        shell: bash -leo pipefail {0}
     env:
       NANVIX_SHA: ${{ needs.get-nanvix-info.outputs.sha }}
       NANVIX_SHA_FULL: ${{ needs.get-nanvix-info.outputs.sha_full }}
-      USER: runner
-      RUSTUP_HOME: /root/.rustup
-      CARGO_HOME: /root/.cargo
-      GN_ARGS: >-
-        extra_cflags="-m32 -march=i686 --gcc-toolchain=/usr"
-        extra_cxxflags="-m32 -march=i686 --gcc-toolchain=/usr"
-        extra_ldflags="-m32 --gcc-toolchain=/usr"
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install V8 Build Dependencies
+      - name: Free Disk Space
         run: |
-          apt-get update && apt-get install -y --no-install-recommends gcc-multilib
+          echo "=== Disk space before cleanup ==="
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/hostedtoolcache
+          echo "=== Disk space after cleanup ==="
+          df -h /
+
+      - name: Pull Docker Image
+        run: docker pull nanvix/toolchain:latest
 
       - name: Download and Extract Nanvix Release
         run: |
@@ -105,11 +99,11 @@ jobs:
 
       - name: Build
         run: |
-          make NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="/opt/nanvix" DOCKER=no VERBOSE=yes all
+          make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes all
 
       - name: Run Example
         run: |
-          make NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="/opt/nanvix" DOCKER=no VERBOSE=yes run
+          make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes run
 
       - name: Cleanup Dangling Resources
         if: always()
@@ -119,7 +113,7 @@ jobs:
       - name: Package Artifacts
         run: |
           set -euo pipefail
-          make NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="/opt/nanvix" DOCKER=no VERBOSE=yes install
+          make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes install
           ARTIFACT_NAME="rusty_v8-${{ matrix.platform }}-${{ matrix.process-mode }}"
           mv dist/nanvix "dist/${ARTIFACT_NAME}"
           tar -cjf "dist/${ARTIFACT_NAME}.tar.bz2" -C dist "${ARTIFACT_NAME}"
