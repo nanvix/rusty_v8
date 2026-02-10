@@ -73,6 +73,10 @@ jobs:
       USER: runner
       RUSTUP_HOME: /root/.rustup
       CARGO_HOME: /root/.cargo
+      GN_ARGS: >-
+        extra_cflags="-m32 -march=i686 --gcc-toolchain=/usr"
+        extra_cxxflags="-m32 -march=i686 --gcc-toolchain=/usr"
+        extra_ldflags="-m32 --gcc-toolchain=/usr"
     steps:
       - uses: actions/checkout@v4
         with:
