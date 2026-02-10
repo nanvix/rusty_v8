@@ -71,6 +71,8 @@ jobs:
       NANVIX_SHA: ${{ needs.get-nanvix-info.outputs.sha }}
       NANVIX_SHA_FULL: ${{ needs.get-nanvix-info.outputs.sha_full }}
       USER: runner
+      RUSTUP_HOME: /root/.rustup
+      CARGO_HOME: /root/.cargo
     steps:
       - uses: actions/checkout@v4
         with:
