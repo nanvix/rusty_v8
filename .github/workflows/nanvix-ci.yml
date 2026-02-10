@@ -62,7 +62,7 @@ jobs:
             process-mode: multi-process
     name: ${{ matrix.platform }}-${{ matrix.process-mode }}
     container:
-      image: nanvix/toolchain:latest
+      image: nanvix/toolchain:v0.11.x-minimal
       options: --device /dev/kvm
     defaults:
       run:
@@ -77,6 +77,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Install V8 Build Dependencies
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends gcc-multilib
 
       - name: Download and Extract Nanvix Release
         run: |
