@@ -98,7 +98,7 @@ jobs:
           fi
           mkdir -p nanvix-artifacts/extracted
           tar -xjf "$ARTIFACT_FILE" -C nanvix-artifacts/extracted
-          NANVIX_HOME=$(find nanvix-artifacts/extracted -maxdepth 2 -type d -name "bin" -exec dirname {} \; | head -1)
+          NANVIX_HOME=$(find "$(pwd)/nanvix-artifacts/extracted" -maxdepth 2 -type d -name "bin" -exec dirname {} \; | head -1)
           echo "NANVIX_HOME=$NANVIX_HOME" >> "$GITHUB_ENV"
 
       - name: Build
