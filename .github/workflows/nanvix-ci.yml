@@ -1,235 +1,216 @@
 name: Nanvix CI
 
 on:
+  # Nightly run ensures long-lived branches do not drift from defaults.
   schedule:
     - cron: "0 0 * * *"
+  # Automatically re-sync whenever nanvix/* branches receive direct pushes.
   push:
     branches:
       - nanvix/**
+  # Automatically run CI on PRs targeting nanvix/* branches.
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
     branches:
       - nanvix/**
+  # Manual trigger allows running the CI on-demand.
   workflow_dispatch:
+  # Automatically trigger on minor/major releases.
   repository_dispatch:
     types: [nanvix-minor-release, nanvix-major-release]
 
 permissions:
-  contents: write
+  contents: read
   actions: write
   issues: write
 
 jobs:
-  # Extract Nanvix SHA once - all matrix builds use the same Nanvix release
-  get-nanvix-info:
-    runs-on: ubuntu-latest
+  setup:
+    runs-on: self-hosted
     outputs:
-      sha: ${{ steps.extract.outputs.sha }}
-      sha_full: ${{ steps.extract.outputs.sha_full }}
+      matrix: ${{ steps.generate-matrix.outputs.matrix }}
+    defaults:
+      run:
+        shell: bash
     steps:
-      - name: Download Nanvix Release Info
-        id: extract
+      - name: Download Nanvix Artifacts
+        env:
+          ARTIFACT_DIR: ${{ github.workspace }}/nanvix-artifacts
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Download Nanvix release artifacts list
-          curl -fsSL https://raw.githubusercontent.com/nanvix/nanvix/refs/heads/dev/scripts/get-nanvix.sh | bash -s -- --force nanvix-artifacts
-          # Find any artifact to extract the SHA
-          ARTIFACT_FILE=$(find nanvix-artifacts -maxdepth 1 -type f -name "*.tar.bz2" | head -1)
-          if [[ -z "$ARTIFACT_FILE" ]]; then
-            echo "::error::No Nanvix artifact found"
+          curl -fsSL https://raw.githubusercontent.com/nanvix/nanvix/ccee7b3688925496cb666385a534b14a0268a07b/scripts/get-nanvix.sh | bash -s -- --force "$ARTIFACT_DIR"
+
+      - name: Generate Build Matrix
+        id: generate-matrix
+        env:
+          ARTIFACT_DIR: ${{ github.workspace }}/nanvix-artifacts
+        run: |
+          set -euo pipefail
+          tarballs=$(find "$ARTIFACT_DIR" -maxdepth 1 -name '*.tar.bz2' -printf '%f\n')
+          if [[ -z "$tarballs" ]]; then
+            echo "::error::No .tar.bz2 artifacts found in $ARTIFACT_DIR"
             exit 1
           fi
-          # Extract Nanvix commit SHA from artifact filename
-          NANVIX_SHA_FULL=$(basename "$ARTIFACT_FILE" | sed -E 's/.*-([a-f0-9]{40})\.tar\.bz2$/\1/')
-          NANVIX_SHA="${NANVIX_SHA_FULL::7}"
-          echo "Nanvix commit SHA: $NANVIX_SHA_FULL (short: $NANVIX_SHA)"
-          echo "sha=$NANVIX_SHA" >> "$GITHUB_OUTPUT"
-          echo "sha_full=$NANVIX_SHA_FULL" >> "$GITHUB_OUTPUT"
+          filtered=$(echo "$tarballs" | grep -iE 'microvm|hyperlight' || true)
+          if [[ -z "$filtered" ]]; then
+            echo "::warning::No eligible artifacts (microvm or hyperlight) found."
+            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          matrix=$(echo "$filtered" | jq -Rc '{artifact_name: .}' | jq -sc '{include: .}')
+          echo "Matrix definition: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Nanvix Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanvix-artifacts
+          path: ${{ github.workspace }}/nanvix-artifacts
+          retention-days: 1
 
   build:
-    needs: get-nanvix-info
-    runs-on: ubuntu-latest
+    needs: setup
+    runs-on: self-hosted
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: hyperlight
-            process-mode: multi-process
-          - platform: hyperlight
-            process-mode: single-process
-          - platform: microvm
-            process-mode: single-process
-          - platform: microvm
-            process-mode: multi-process
-    name: ${{ matrix.platform }}-${{ matrix.process-mode }}
-    env:
-      NANVIX_SHA: ${{ needs.get-nanvix-info.outputs.sha }}
-      NANVIX_SHA_FULL: ${{ needs.get-nanvix-info.outputs.sha_full }}
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Free Disk Space
-        run: |
-          echo "=== Disk space before cleanup ==="
-          df -h /
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/hostedtoolcache \
-            /usr/local/graalvm /usr/local/.ghcup /usr/share/swift \
-            /usr/local/share/boost /usr/lib/jvm /opt/ghc \
-            /opt/microsoft/powershell /usr/local/share/chromium
-          docker system prune -af || true
-          echo "=== Disk space after cleanup ==="
-          df -h /
+      - name: Restore Cached Artifacts
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-nanvix-${{ matrix.artifact_name }}-${{ github.ref }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-nanvix-${{ matrix.artifact_name }}-
 
-      - name: Pull Docker Image
-        run: docker pull nanvix/toolchain:latest
+      - name: Download Nanvix Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nanvix-artifacts
+          path: ${{ github.workspace }}/nanvix-artifacts
 
-      - name: Download and Extract Nanvix Release
+      - name: Extract Nanvix Artifact (${{ matrix.artifact_name }})
+        env:
+          ARTIFACT_DIR: ${{ github.workspace }}/nanvix-artifacts
+          ARTIFACT_NAME: ${{ matrix.artifact_name }}
         run: |
           set -euo pipefail
-          # Download all Nanvix release artifacts
-          curl -fsSL https://raw.githubusercontent.com/nanvix/nanvix/refs/heads/dev/scripts/get-nanvix.sh | bash -s -- --force nanvix-artifacts
-          # Find and extract the artifact matching platform and process-mode
-          ARTIFACT_PATTERN="${{ matrix.platform }}.*${{ matrix.process-mode }}.*\.tar\.bz2"
-          ARTIFACT_FILE=$(find nanvix-artifacts -maxdepth 1 -type f -name "*.tar.bz2" | grep -E "$ARTIFACT_PATTERN" | head -1)
-          if [[ -z "$ARTIFACT_FILE" ]]; then
-            echo "::error::No ${{ matrix.platform }} ${{ matrix.process-mode }} artifact found"
+          SRC="$ARTIFACT_DIR/$ARTIFACT_NAME"
+          if [[ ! -s "$SRC" ]]; then
+            echo "::error::Expected artifact not found: $SRC"
             exit 1
           fi
-          mkdir -p nanvix-artifacts/extracted
-          tar -xjf "$ARTIFACT_FILE" -C nanvix-artifacts/extracted
-          NANVIX_HOME=$(find "$(pwd)/nanvix-artifacts/extracted" -maxdepth 2 -type d -name "bin" -exec dirname {} \; | head -1)
-          echo "NANVIX_HOME=$NANVIX_HOME" >> "$GITHUB_ENV"
+          EXTRACT_DIR="$ARTIFACT_DIR/extracted/${ARTIFACT_NAME//.tar.bz2/}"
+          rm -rf "$EXTRACT_DIR"
+          mkdir -p "$EXTRACT_DIR"
+          tar -xjf "$SRC" -C "$EXTRACT_DIR"
+          echo "EXTRACTED_NANVIX_HOME=$EXTRACT_DIR" >> "$GITHUB_ENV"
+          echo "Using extracted Nanvix artifacts from $EXTRACT_DIR"
 
-      - name: Build
+      - name: Build rusty_v8 for Nanvix
+        env:
+          LOG_DIR: ${{ github.workspace }}/ci-logs
         run: |
-          make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes all
+          set -euo pipefail
+          : "${EXTRACTED_NANVIX_HOME:?Missing extracted artifact path}"
+          LOCAL_TOOLCHAIN="$HOME/toolchain"
+          if [[ ! -d "$LOCAL_TOOLCHAIN" ]]; then
+            echo "::error::Local Nanvix toolchain not found at $LOCAL_TOOLCHAIN"
+            exit 1
+          fi
+          mkdir -p "$LOG_DIR"
+          LOG_FILE="$LOG_DIR/make-build-${{ matrix.artifact_name }}.log"
+          NANVIX_HOME="${EXTRACTED_NANVIX_HOME}" \
+          NANVIX_TOOLCHAIN="$LOCAL_TOOLCHAIN" \
+          DOCKER=no \
+          VERBOSE=yes \
+          make all |& tee "$LOG_FILE"
+          echo "Make build logs saved to $LOG_FILE"
 
       - name: Run Example
         run: |
-          make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes run
+          set -euo pipefail
+          : "${EXTRACTED_NANVIX_HOME:?Missing extracted artifact path}"
+          LOCAL_TOOLCHAIN="$HOME/toolchain"
+          if [[ ! -d "$LOCAL_TOOLCHAIN" ]]; then
+            echo "::error::Local Nanvix toolchain not found at $LOCAL_TOOLCHAIN"
+            exit 1
+          fi
+          NANVIX_HOME="${EXTRACTED_NANVIX_HOME}" \
+          NANVIX_TOOLCHAIN="$LOCAL_TOOLCHAIN" \
+          DOCKER=no \
+          VERBOSE=yes \
+          make run
 
       - name: Cleanup Dangling Resources
         if: always()
         run: |
-          find /tmp -maxdepth 1 -type d -name 'nvx:*' -exec rm -rf {} + 2>/dev/null || true
+          set -euo pipefail
+          sudo find /tmp -maxdepth 1 -type d -name 'nvx:*' -exec rm -rf {} + 2>/dev/null || true
 
-      - name: Package Artifacts
+      - name: Install Artifacts
         run: |
           set -euo pipefail
-          make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes install
-          ARTIFACT_NAME="rusty_v8-${{ matrix.platform }}-${{ matrix.process-mode }}"
-          mv dist/nanvix "dist/${ARTIFACT_NAME}"
-          tar -cjf "dist/${ARTIFACT_NAME}.tar.bz2" -C dist "${ARTIFACT_NAME}"
-          echo "ARTIFACT_TARBALL=dist/${ARTIFACT_NAME}.tar.bz2" >> "$GITHUB_ENV"
+          : "${EXTRACTED_NANVIX_HOME:?Missing extracted artifact path}"
+          LOCAL_TOOLCHAIN="$HOME/toolchain"
+          if [[ ! -d "$LOCAL_TOOLCHAIN" ]]; then
+            echo "::error::Local Nanvix toolchain not found at $LOCAL_TOOLCHAIN"
+            exit 1
+          fi
+          NANVIX_HOME="${EXTRACTED_NANVIX_HOME}" \
+          NANVIX_TOOLCHAIN="$LOCAL_TOOLCHAIN" \
+          DOCKER=no \
+          VERBOSE=yes \
+          make install
 
-      - name: Upload Build Artifacts
+      - name: Upload build artifacts and logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rusty_v8-${{ matrix.platform }}-${{ matrix.process-mode }}
-          path: ${{ env.ARTIFACT_TARBALL }}
-          retention-days: 7
+          name: rusty_v8-nanvix-build-${{ matrix.artifact_name }}
+          path: |
+            ci-logs
+            dist
+          if-no-files-found: warn
 
-  release:
-    needs: [get-nanvix-info, build]
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    env:
-      NANVIX_SHA: ${{ needs.get-nanvix-info.outputs.sha }}
-      NANVIX_SHA_FULL: ${{ needs.get-nanvix-info.outputs.sha_full }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-artifacts
-          pattern: rusty_v8-*
-
-      - name: Prepare Release Assets
-        run: |
-          set -euo pipefail
-          mkdir -p release-assets
-          find release-artifacts -name "*.tar.bz2" -exec cp {} release-assets/ \;
-          ls -la release-assets/
-
-      - name: Get Nanvix Release Info
-        id: nanvix-release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          echo "Using Nanvix SHA from job outputs: $NANVIX_SHA (full: $NANVIX_SHA_FULL)"
-
-          # Query Nanvix release API for additional metadata
-          API_URL="https://api.github.com/repos/nanvix/nanvix/releases/tags/latest"
-          RELEASE_INFO=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$API_URL")
-          NANVIX_NAME=$(echo "$RELEASE_INFO" | jq -r '.name // "latest"')
-          NANVIX_PUBLISHED=$(echo "$RELEASE_INFO" | jq -r '.published_at')
-
-          echo "name=${NANVIX_NAME}" >> "$GITHUB_OUTPUT"
-          echo "published=${NANVIX_PUBLISHED}" >> "$GITHUB_OUTPUT"
-
-      - name: Create Latest Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NANVIX_NAME: ${{ steps.nanvix-release.outputs.name }}
-          NANVIX_PUBLISHED: ${{ steps.nanvix-release.outputs.published }}
-        run: |
-          # Release tag format: {commit-sha}-nanvix-{nanvix-sha}
-          # This enables easy lookup of releases built with a specific Nanvix version
-          RELEASE_TAG="${GITHUB_SHA::7}-nanvix-${NANVIX_SHA}"
-
-          # Delete existing release if it exists (idempotent re-runs)
-          if gh release view "$RELEASE_TAG" &>/dev/null; then
-            echo "Deleting existing release: $RELEASE_TAG"
-            gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
-          fi
-
-          gh release create "$RELEASE_TAG" \
-            --title "Build ${GITHUB_SHA::7}" \
-            --notes "Automated build from branch ${{ github.ref_name }} at commit ${{ github.sha }}.
-
-          **Build Information:**
-          - Workflow Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          - Commit: [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
-          - Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-
-          **Nanvix Release:**
-          - Name: ${NANVIX_NAME}
-          - Published: ${NANVIX_PUBLISHED}
-          - Commit: [${NANVIX_SHA_FULL}](https://github.com/nanvix/nanvix/commit/${NANVIX_SHA_FULL})
-
-          **Dependencies:**
-          - None (base library)" \
-            --latest \
-            release-assets/*.tar.bz2
-
-  report-failure:
+  report-minor-release-failure:
     needs:
+      - setup
       - build
     if: >-
-      ${{ always() &&
-          (github.event_name == 'repository_dispatch' || github.event_name == 'schedule' || github.event_name == 'push') &&
-          needs.build.result == 'failure' }}
+      ${{ always() && github.event_name == 'repository_dispatch' &&
+          (github.event.action == 'nanvix-minor-release' || github.event.action == 'nanvix-major-release') &&
+          (needs.setup.result == 'failure' || needs.build.result == 'failure') }}
     runs-on: ubuntu-latest
     steps:
       - name: Create failure issue
         uses: actions/github-script@v7
         env:
+          SETUP_RESULT: ${{ needs.setup.result }}
           BUILD_RESULT: ${{ needs.build.result }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const isMajor = context.payload.action === 'nanvix-major-release';
+            const releaseType = isMajor ? 'major' : 'minor';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const title = `CI failure (run ${context.runNumber})`;
+            const title = `Nanvix ${releaseType} release CI failure (run ${context.runNumber})`;
             const body = [
-              `The rusty_v8 CI workflow failed.`,
-              `- Trigger: ${context.eventName}`,
+              `The Nanvix ${releaseType} release CI workflow failed.`,
               `- Run: [#${context.runNumber}](${runUrl})`,
               `- SHA: ${context.sha}`,
+              `- setup: ${process.env.SETUP_RESULT}`,
               `- build: ${process.env.BUILD_RESULT}`,
               '',
               'Please investigate and take any corrective actions.'
