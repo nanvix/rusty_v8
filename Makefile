@@ -26,6 +26,9 @@ VERBOSE ?= no
 # Set this variable to 'yes' to build with Docker, or 'no' for native cargo.
 DOCKER ?= yes
 
+# Set this variable to pass extra Docker flags to the build container (e.g., sccache mounts).
+DOCKER_EXTRA_FLAGS ?=
+
 #===================================================================================================
 # Internal Variables
 #===================================================================================================
@@ -83,8 +86,9 @@ ifeq ($(DOCKER), yes)
 	-e V8_FROM_SOURCE=1 \
 	-e USER_ID=$(shell id -u) \
 	-e GROUP_ID=$(shell id -g) \
+	$(DOCKER_EXTRA_FLAGS) \
 	nanvix/toolchain:latest \
-	/bin/bash -l -c 'cd /mnt && exec cargo $(NANVIX_RUST_TOOLCHAIN) build $(CARGO_FLAGS); chown -R $$USER_ID:$$GROUP_ID /mnt/target /mnt/gen 2>/dev/null || true'
+	/bin/bash -l -c 'cd /mnt && cargo $(NANVIX_RUST_TOOLCHAIN) build $(CARGO_FLAGS) "$$@"; _st=$$?; chown -R $$USER_ID:$$GROUP_ID /mnt/target /mnt/gen 2>/dev/null || true; exit $$_st' _
 else
 	# Native cargo build with low priority.
 	CARGO_BUILD_CMD := nice -n 20 env NANVIX_HOME=$(NANVIX_HOME) V8_FROM_SOURCE=1 LIBCLANG_PATH=$(LIBCLANG_DIR_HOST) cargo $(NANVIX_RUST_TOOLCHAIN) build $(CARGO_FLAGS)
