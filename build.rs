@@ -1248,7 +1248,11 @@ int __cxa_thread_atexit_impl(void (*func)(void *), void *arg, void *dso_handle) 
 #endif
 "#;
 
-  std::fs::write("/tmp/nanvix_stubs.c", stub_code).unwrap();
+  let out_dir = env::var("OUT_DIR").expect("OUT_DIR must be set");
+  let stubs_c = format!("{}/nanvix_stubs.c", out_dir);
+  let stubs_o = format!("{}/nanvix_stubs.o", out_dir);
+
+  std::fs::write(&stubs_c, stub_code).unwrap();
 
   let nanvix_toolchain = std::env::var("NANVIX_TOOLCHAIN")
     .expect("NANVIX_TOOLCHAIN environment variable must be set");
@@ -1256,14 +1260,7 @@ int __cxa_thread_atexit_impl(void (*func)(void *), void *arg, void *dso_handle) 
   let clang_path = format!("{}/bin/clang", nanvix_toolchain);
 
   let output = std::process::Command::new(&clang_path)
-    .args(&[
-      "-c",
-      "-target",
-      "i686-elf",
-      "-o",
-      "/tmp/nanvix_stubs.o",
-      "/tmp/nanvix_stubs.c",
-    ])
+    .args(&["-c", "-target", "i686-elf", "-o", &stubs_o, &stubs_c])
     .output()
     .expect("Failed to compile nanvix stubs");
 
@@ -1274,7 +1271,7 @@ int __cxa_thread_atexit_impl(void (*func)(void *), void *arg, void *dso_handle) 
     );
   }
 
-  println!("cargo:rustc-link-arg=/tmp/nanvix_stubs.o");
+  println!("cargo:rustc-link-arg={}", stubs_o);
 }
 
 fn env_bool(key: &str) -> bool {
