@@ -84,6 +84,34 @@ jobs:
       - name: Pull Docker Image
         run: docker pull nanvix/toolchain:latest
 
+      - name: Setup sccache
+        run: |
+          set -euo pipefail
+          SCCACHE_VERSION="v0.9.1"
+          SCCACHE_ARCHIVE="sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl"
+          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${SCCACHE_ARCHIVE}.tar.gz" | tar xz
+          SCCACHE_BIN="$(pwd)/${SCCACHE_ARCHIVE}/sccache"
+          chmod +x "$SCCACHE_BIN"
+          mkdir -p sccache-cache
+          echo "SCCACHE_BIN=$SCCACHE_BIN" >> "$GITHUB_ENV"
+          echo "SCCACHE_CACHE_DIR=$(pwd)/sccache-cache" >> "$GITHUB_ENV"
+          # Configure Docker flags to mount sccache binary and cache into the build container
+          DOCKER_EXTRA_FLAGS="-v ${SCCACHE_BIN}:/usr/local/bin/sccache:ro"
+          DOCKER_EXTRA_FLAGS+=" -v $(pwd)/sccache-cache:/tmp/sccache"
+          DOCKER_EXTRA_FLAGS+=" -e SCCACHE=/usr/local/bin/sccache"
+          DOCKER_EXTRA_FLAGS+=" -e SCCACHE_DIR=/tmp/sccache"
+          DOCKER_EXTRA_FLAGS+=" -e SCCACHE_IDLE_TIMEOUT=0"
+          echo "DOCKER_EXTRA_FLAGS=$DOCKER_EXTRA_FLAGS" >> "$GITHUB_ENV"
+
+      - name: Restore sccache cache
+        uses: actions/cache/restore@v4
+        with:
+          path: sccache-cache
+          key: sccache-${{ matrix.platform }}-${{ matrix.process-mode }}-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ matrix.platform }}-${{ matrix.process-mode }}-
+            sccache-
+
       - name: Download and Extract Nanvix Release
         run: |
           set -euo pipefail
@@ -103,21 +131,32 @@ jobs:
 
       - name: Build
         run: |
-          make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes all
+          make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes DOCKER_EXTRA_FLAGS="$DOCKER_EXTRA_FLAGS" all
 
       - name: Run Example
         run: |
-          make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes run
+          make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes DOCKER_EXTRA_FLAGS="$DOCKER_EXTRA_FLAGS" run
 
       - name: Cleanup Dangling Resources
         if: always()
         run: |
           find /tmp -maxdepth 1 -type d -name 'nvx:*' -exec rm -rf {} + 2>/dev/null || true
 
+      - name: Fix sccache cache permissions
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" sccache-cache 2>/dev/null || true
+
+      - name: Save sccache cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: sccache-cache
+          key: sccache-${{ matrix.platform }}-${{ matrix.process-mode }}-${{ github.sha }}
+
       - name: Package Artifacts
         run: |
           set -euo pipefail
-          make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes install
+          make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes DOCKER_EXTRA_FLAGS="$DOCKER_EXTRA_FLAGS" install
           ARTIFACT_NAME="rusty_v8-${{ matrix.platform }}-${{ matrix.process-mode }}"
           mv dist/nanvix "dist/${ARTIFACT_NAME}"
           tar -cjf "dist/${ARTIFACT_NAME}.tar.bz2" -C dist "${ARTIFACT_NAME}"
