@@ -82,7 +82,7 @@ jobs:
           df -h /
 
       - name: Pull Docker Image
-        run: docker pull nanvix/toolchain:latest
+        run: docker pull nanvix/toolchain:latest-minimal
 
       - name: Setup sccache
         run: |

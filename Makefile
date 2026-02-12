@@ -87,7 +87,7 @@ ifeq ($(DOCKER), yes)
 	-e USER_ID=$(shell id -u) \
 	-e GROUP_ID=$(shell id -g) \
 	$(DOCKER_EXTRA_FLAGS) \
-	nanvix/toolchain:latest \
+	nanvix/toolchain:latest-minimal \
 	/bin/bash -l -c 'cd /mnt && cargo $(NANVIX_RUST_TOOLCHAIN) build $(CARGO_FLAGS) "$$@"; _st=$$?; chown -R $$USER_ID:$$GROUP_ID /mnt/target /mnt/gen 2>/dev/null || true; exit $$_st' _
 else
 	# Native cargo build with low priority.
@@ -103,7 +103,7 @@ ifeq ($(DOCKER), yes)
 	-e NANVIX_HOME=/root/nanvix \
 	-e NANVIX_TOOLCHAIN=/opt/nanvix \
 	-e LIBCLANG_PATH=$(LIBCLANG_DIR_DOCKER) \
-	nanvix/toolchain:latest \
+	nanvix/toolchain:latest-minimal \
 	/bin/bash -l -c 'cd /mnt && cargo $(NANVIX_RUST_TOOLCHAIN) clean'
 else
   CARGO_CLEAN_CMD := cargo clean
