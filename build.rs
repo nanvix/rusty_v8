@@ -200,10 +200,17 @@ fn build_binding() {
     bindings.clang_args([
       "--target=i686-unknown-nanvix",
       &format!("--sysroot={}/i686-nanvix", nanvix_toolchain),
-      &format!("-I{}/include/c++/v1", nanvix_toolchain),
-      &format!("-I{}/include/i686-unknown-nanvix/c++/v1", nanvix_toolchain),
-      &format!("-I{}/lib/clang/21/include", nanvix_toolchain),
-      &format!("-I{}/i686-nanvix/include", nanvix_toolchain),
+      &format!("-isystem{}/include/c++/v1", nanvix_toolchain),
+      &format!(
+        "-isystem{}/include/i686-unknown-nanvix/c++/v1",
+        nanvix_toolchain
+      ),
+      &format!("-isystem{}/lib/clang/21/include", nanvix_toolchain),
+      // Use -idirafter so that the sysroot's C headers are searched after
+      // the C++ standard library headers, preventing libc++'s wrapper
+      // headers (e.g. <cstring> -> <string.h>) from resolving to the
+      // wrong header.
+      &format!("-idirafter{}/i686-nanvix/include", nanvix_toolchain),
       "-m32",
       "-D__nanvix__",
       "-D_GNU_SOURCE=1",
