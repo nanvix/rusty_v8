@@ -64,6 +64,8 @@ jobs:
             process-mode: single-process
           - platform: microvm
             process-mode: multi-process
+          - platform: microvm
+            process-mode: standalone
     name: ${{ matrix.platform }}-${{ matrix.process-mode }}
     env:
       NANVIX_SHA: ${{ needs.get-nanvix-info.outputs.sha }}
