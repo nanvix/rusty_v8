@@ -58,15 +58,20 @@ jobs:
         include:
           - platform: hyperlight
             process-mode: multi-process
+            memory: 128mb
           - platform: hyperlight
             process-mode: single-process
+            memory: 128mb
           - platform: microvm
             process-mode: single-process
+            memory: 128mb
           - platform: microvm
             process-mode: multi-process
+            memory: 128mb
           - platform: microvm
             process-mode: standalone
-    name: ${{ matrix.platform }}-${{ matrix.process-mode }}
+            memory: 128mb
+    name: ${{ matrix.platform }}-${{ matrix.process-mode }}-${{ matrix.memory }}
     env:
       NANVIX_SHA: ${{ needs.get-nanvix-info.outputs.sha }}
       NANVIX_SHA_FULL: ${{ needs.get-nanvix-info.outputs.sha_full }}
@@ -124,7 +129,7 @@ jobs:
           # Download all Nanvix release artifacts
           curl -fsSL https://raw.githubusercontent.com/nanvix/nanvix/refs/heads/dev/scripts/get-nanvix.sh | bash -s -- --force nanvix-artifacts
           # Find and extract the artifact matching platform and process-mode
-          ARTIFACT_PATTERN="${{ matrix.platform }}.*${{ matrix.process-mode }}.*\.tar\.bz2"
+          ARTIFACT_PATTERN="${{ matrix.platform }}.*${{ matrix.process-mode }}.*${{ matrix.memory }}.*\.tar\.bz2"
           ARTIFACT_FILE=$(find nanvix-artifacts -maxdepth 1 -type f -name "*.tar.bz2" | grep -E "$ARTIFACT_PATTERN" | head -1)
           if [[ -z "$ARTIFACT_FILE" ]]; then
             echo "::error::No ${{ matrix.platform }} ${{ matrix.process-mode }} artifact found"
@@ -169,7 +174,7 @@ jobs:
         run: |
           set -euo pipefail
           make NANVIX_HOME="$NANVIX_HOME" DOCKER=yes VERBOSE=yes DOCKER_EXTRA_FLAGS="$DOCKER_EXTRA_FLAGS" install
-          ARTIFACT_NAME="rusty_v8-${{ matrix.platform }}-${{ matrix.process-mode }}"
+          ARTIFACT_NAME="rusty_v8-${{ matrix.platform }}-${{ matrix.process-mode }}-${{ matrix.memory }}"
           mv dist/nanvix "dist/${ARTIFACT_NAME}"
           tar -cjf "dist/${ARTIFACT_NAME}.tar.bz2" -C dist "${ARTIFACT_NAME}"
           echo "ARTIFACT_TARBALL=dist/${ARTIFACT_NAME}.tar.bz2" >> "$GITHUB_ENV"
@@ -177,7 +182,7 @@ jobs:
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rusty_v8-${{ matrix.platform }}-${{ matrix.process-mode }}
+          name: rusty_v8-${{ matrix.platform }}-${{ matrix.process-mode }}-${{ matrix.memory }}
           path: ${{ env.ARTIFACT_TARBALL }}
           retention-days: 7
 
