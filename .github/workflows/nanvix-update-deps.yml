@@ -28,4 +28,4 @@ jobs:
       reviewers: "ppenna"
       assignees: "ppenna"
     secrets:
-      automation-token: ${{ secrets.GITHUB_TOKEN }}
+      automation-token: ${{ secrets.DISPATCH_TOKEN }}
