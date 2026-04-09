@@ -48,4 +48,4 @@ jobs:
       target_branch_prefix: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.target_branch_prefix) || 'nanvix/' }}
       assignee: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.assignee) || 'ppenna' }}
     secrets:
-      GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
